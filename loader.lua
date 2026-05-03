@@ -17,7 +17,7 @@ local function getRequestFunction()
         or (http and http.request)
         or (getgenv and getgenv().request)
         or (shared and shared.request)
-    
+
     -- For executors that use loadstring with custom functions
     if not requestFunc then
         -- Check if we can use game:HttpGet (limited but works sometimes)
@@ -31,7 +31,7 @@ local function getRequestFunction()
             end
         end
     end
-    
+
     return requestFunc
 end
 
@@ -39,23 +39,23 @@ end
 local function getHWID()
     local userId = lp.UserId
     local accountAge = lp.AccountAge
-    
+
     local graphicsInfo = ""
     pcall(function()
         graphicsInfo = tostring(settings().Rendering.GraphicsMode)
     end)
-    
+
     local viewportSize = workspace.CurrentCamera.ViewportSize
     local screenInfo = tostring(viewportSize.X) .. "x" .. tostring(viewportSize.Y)
     local executor = identifyexecutor and identifyexecutor() or "Unknown"
-    
+
     local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo .. ":" .. executor
-    
+
     local hash = ""
     for i = 1, #hwidString do
         hash = hash .. string.format("%02x", string.byte(hwidString, i))
     end
-    
+
     return hash:sub(1, 32)
 end
 
@@ -63,17 +63,17 @@ end
 local function verifyKey(key)
     local hwid = getHWID()
     local requestFunc = getRequestFunction()
-    
+
     if not requestFunc then
         return false, "No HTTP request function found for your executor!"
     end
-    
+
     local data = {
         key = key,
         hwid = hwid,
         username = lp.Name
     }
-    
+
     local success, response = pcall(function()
         return requestFunc({
             Url = API_URL,
@@ -84,11 +84,11 @@ local function verifyKey(key)
             Body = http:JSONEncode(data)
         })
     end)
-    
+
     if not success then
         return false, "Request failed: " .. tostring(response)
     end
-    
+
     if response and response.Body then
         local result = http:JSONDecode(response.Body)
         if result and result.success then
@@ -105,7 +105,7 @@ local function verifyKey(key)
             end
         end
     end
-    
+
     return false, "Verification failed!"
 end
 
@@ -115,12 +115,13 @@ end
 local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
 
 -- ============================================
--- GET KEY FROM ARGUMENT
+-- GET KEY FROM ARGUMENT OR GLOBAL VARIABLE
 -- ============================================
-local script_key = ... or ""
+-- This is the FIX: Check multiple places for the key
+local script_key = ... or _G.script_key or getgenv().script_key or shared.script_key or ""
 
 if script_key == "" then
-    error("No license key provided!")
+    error("No license key provided! Set script_key='YOUR_KEY' before loading")
 end
 
 print("Verifying key: " .. script_key)
@@ -131,7 +132,7 @@ if valid then
     local success, result = pcall(function()
         return game:HttpGet(MAIN_SCRIPT_URL)
     end)
-    
+
     if success and result then
         loadstring(result)()
     else
