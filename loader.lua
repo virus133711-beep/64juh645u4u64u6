@@ -90,7 +90,7 @@ if valid then
     print("✅ " .. message)
     print("Loading script...")
     -- Load your actual script here
-    loadstring(game:HttpGet("https://github.com/virus133711-beep/5647y457y45y7u457y/blob/main/script.lua"))()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"))()
 else
     print("❌ " .. message)
     print("Invalid license key. Please contact the seller.")
