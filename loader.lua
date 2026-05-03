@@ -1,11 +1,39 @@
 -- ============================================
--- DA HOOD SCRIPT LOADER WITH KEY VERIFICATION
+-- UNIVERSAL LOADER (Works with most executors)
 -- ============================================
 
 local players = game:GetService("Players")
 local http = game:GetService("HttpService")
 local API_URL = "http://176.100.36.119:5001/api/verify"
 local lp = players.LocalPlayer
+
+-- Universal HTTP request function
+local function getRequestFunction()
+    -- Try different executor HTTP functions
+    local requestFunc = syn and syn.request 
+        or request 
+        or http_request 
+        or http.request 
+        or (http and http.request)
+        or (getgenv and getgenv().request)
+        or (shared and shared.request)
+    
+    -- For executors that use loadstring with custom functions
+    if not requestFunc then
+        -- Check if we can use game:HttpGet (limited but works sometimes)
+        local success, result = pcall(function()
+            return game:HttpGet(API_URL)
+        end)
+        if success then
+            return function(options)
+                local body = game:HttpGet(options.Url)
+                return {Body = body, StatusCode = 200}
+            end
+        end
+    end
+    
+    return requestFunc
+end
 
 -- Get HWID
 local function getHWID()
@@ -19,8 +47,9 @@ local function getHWID()
     
     local viewportSize = workspace.CurrentCamera.ViewportSize
     local screenInfo = tostring(viewportSize.X) .. "x" .. tostring(viewportSize.Y)
+    local executor = identifyexecutor and identifyexecutor() or "Unknown"
     
-    local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo
+    local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo .. ":" .. executor
     
     local hash = ""
     for i = 1, #hwidString do
@@ -33,18 +62,17 @@ end
 -- Verify key
 local function verifyKey(key)
     local hwid = getHWID()
+    local requestFunc = getRequestFunction()
+    
+    if not requestFunc then
+        return false, "No HTTP request function found for your executor!"
+    end
     
     local data = {
         key = key,
         hwid = hwid,
         username = lp.Name
     }
-    
-    local requestFunc = syn and syn.request or request or http_request or (http and http.request)
-    
-    if not requestFunc then
-        return false, "No HTTP request method!"
-    end
     
     local success, response = pcall(function()
         return requestFunc({
@@ -61,46 +89,28 @@ local function verifyKey(key)
         return false, "Request failed: " .. tostring(response)
     end
     
-    if not response then
-        return false, "No response from server"
-    end
-    
-    if response.StatusCode ~= 200 then
-        return false, "Server error: " .. tostring(response.StatusCode)
-    end
-    
-    if not response.Body or response.Body == "" then
-        return false, "Empty response from server"
-    end
-    
-    -- Safely parse JSON
-    local result
-    local parseSuccess, parseError = pcall(function()
-        result = http:JSONDecode(response.Body)
-    end)
-    
-    if not parseSuccess then
-        print("Raw response: " .. tostring(response.Body))
-        return false, "Invalid server response"
-    end
-    
-    if result.success then
-        return true, "Verified!"
-    else
-        if result.message == "INVALID_KEY" then
-            return false, "Invalid key!"
-        elseif result.message == "KEY_EXPIRED" then
-            return false, "Key expired!"
-        elseif result.message == "WRONG_HWID" then
-            return false, "Key locked to another HWID!"
-        else
-            return false, result.message or "Verification failed!"
+    if response and response.Body then
+        local result = http:JSONDecode(response.Body)
+        if result and result.success then
+            return true, "Verified!"
+        elseif result and result.message then
+            if result.message == "INVALID_KEY" then
+                return false, "Invalid license key!"
+            elseif result.message == "KEY_EXPIRED" then
+                return false, "Key has expired!"
+            elseif result.message == "WRONG_HWID" then
+                return false, "Key locked to another HWID!"
+            else
+                return false, result.message
+            end
         end
     end
+    
+    return false, "Verification failed!"
 end
 
 -- ============================================
--- CHANGE THIS TO YOUR ACTUAL SCRIPT URL
+-- YOUR MAIN SCRIPT URL
 -- ============================================
 local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
 
@@ -110,20 +120,23 @@ local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647
 local script_key = ... or ""
 
 if script_key == "" then
-    error("❌ No license key provided!\nUsage: loadstring(game:HttpGet('loader_url'))('YOUR_KEY')")
+    error("No license key provided!")
 end
 
-print("🔑 Verifying license key: " .. script_key)
+print("Verifying key: " .. script_key)
 local valid, message = verifyKey(script_key)
 
 if valid then
-    print("✅ " .. message)
-    print("📥 Loading script...")
-    local scriptContent = game:HttpGet(MAIN_SCRIPT_URL)
-    loadstring(scriptContent)()
+    print("Success! Loading script...")
+    local success, result = pcall(function()
+        return game:HttpGet(MAIN_SCRIPT_URL)
+    end)
+    
+    if success and result then
+        loadstring(result)()
+    else
+        error("Failed to load main script: " .. tostring(result))
+    end
 else
-    print("❌ " .. message)
-    warn("Invalid license key. Contact seller.")
-    task.wait(3)
-    game:Shutdown()
+    error("License error: " .. message)
 end
