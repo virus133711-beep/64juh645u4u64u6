@@ -1,11 +1,9 @@
 -- ============================================
--- KEY SYSTEM LOADER
+-- DA HOOD SCRIPT LOADER WITH KEY VERIFICATION
 -- ============================================
 
 local players = game:GetService("Players")
 local http = game:GetService("HttpService")
-
--- Configuration
 local API_URL = "http://176.100.36.119:5001/api/verify"
 local lp = players.LocalPlayer
 
@@ -32,7 +30,7 @@ local function getHWID()
     return hash:sub(1, 32)
 end
 
--- Verify key with server
+-- Verify key
 local function verifyKey(key)
     local hwid = getHWID()
     
@@ -45,7 +43,7 @@ local function verifyKey(key)
     local requestFunc = syn and syn.request or request or http_request or (http and http.request)
     
     if not requestFunc then
-        return false, "No HTTP request method available!"
+        return false, "No HTTP request method!"
     end
     
     local success, response = pcall(function()
@@ -59,41 +57,73 @@ local function verifyKey(key)
         })
     end)
     
-    if success and response and response.Body then
-        local result = http:JSONDecode(response.Body)
-        
-        if result.success then
-            return true, "Key verified!"
-        else
-            if result.message == "INVALID_KEY" then
-                return false, "Invalid license key!"
-            elseif result.message == "KEY_EXPIRED" then
-                return false, "Key has expired!"
-            elseif result.message == "WRONG_HWID" then
-                return false, "Key locked to another HWID!"
-            else
-                return false, result.message or "Verification failed!"
-            end
-        end
+    if not success then
+        return false, "Request failed: " .. tostring(response)
     end
     
-    return false, "Could not connect to license server!"
+    if not response then
+        return false, "No response from server"
+    end
+    
+    if response.StatusCode ~= 200 then
+        return false, "Server error: " .. tostring(response.StatusCode)
+    end
+    
+    if not response.Body or response.Body == "" then
+        return false, "Empty response from server"
+    end
+    
+    -- Safely parse JSON
+    local result
+    local parseSuccess, parseError = pcall(function()
+        result = http:JSONDecode(response.Body)
+    end)
+    
+    if not parseSuccess then
+        print("Raw response: " .. tostring(response.Body))
+        return false, "Invalid server response"
+    end
+    
+    if result.success then
+        return true, "Verified!"
+    else
+        if result.message == "INVALID_KEY" then
+            return false, "Invalid key!"
+        elseif result.message == "KEY_EXPIRED" then
+            return false, "Key expired!"
+        elseif result.message == "WRONG_HWID" then
+            return false, "Key locked to another HWID!"
+        else
+            return false, result.message or "Verification failed!"
+        end
+    end
 end
 
--- Main execution
-local script_key = "YWGSCaYzIjfkZbYKfbbFSEWiIEQtqgBz"  -- CHANGE THIS TO YOUR KEY
+-- ============================================
+-- CHANGE THIS TO YOUR ACTUAL SCRIPT URL
+-- ============================================
+local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
 
-print("Verifying license...")
+-- ============================================
+-- GET KEY FROM ARGUMENT
+-- ============================================
+local script_key = ... or ""
+
+if script_key == "" then
+    error("❌ No license key provided!\nUsage: loadstring(game:HttpGet('loader_url'))('YOUR_KEY')")
+end
+
+print("🔑 Verifying license key: " .. script_key)
 local valid, message = verifyKey(script_key)
 
 if valid then
     print("✅ " .. message)
-    print("Loading script...")
-    -- Load your actual script here
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"))()
+    print("📥 Loading script...")
+    local scriptContent = game:HttpGet(MAIN_SCRIPT_URL)
+    loadstring(scriptContent)()
 else
     print("❌ " .. message)
-    print("Invalid license key. Please contact the seller.")
-    -- Optional: Kick or shutdown
+    warn("Invalid license key. Contact seller.")
+    task.wait(3)
     game:Shutdown()
 end
