@@ -1,105 +1,71 @@
 -- ============================================
--- LOADER WITH KEY PARAMETER SUPPORT
+-- DIRECT API LOADER (No pastebin needed)
 -- ============================================
 
--- Get the key from the argument passed in
-local script_key = ... or ""
-
--- Also check if it was set as a global variable
-if script_key == "" and _G.script_key then
-    script_key = _G.script_key
-end
+local script_key = ... or _G.script_key or ""
 
 if script_key == "" then
-    error([[
-❌ No license key provided!
-
-Usage (Method 1 - Recommended):
-loadstring(game:HttpGet("YOUR_LOADER_URL"))("YOUR_KEY_HERE")
-
-Usage (Method 2):
-script_key = "YOUR_KEY_HERE"
-loadstring(game:HttpGet("YOUR_LOADER_URL"))()
-    ]])
+    error("❌ No license key provided! Usage: loadstring(...)('YOUR_KEY')")
 end
 
-print("🔑 Key found: " .. script_key)
+print("🔑 Verifying key: " .. script_key)
+
+local API_URL = "http://176.100.36.119:5001/api/verify"
+local http = game:GetService("HttpService")
+local lp = game:GetService("Players").LocalPlayer
 
 -- Get HWID
 local function getHWID()
-    local lp = game:GetService("Players").LocalPlayer
     local userId = lp.UserId
     local accountAge = lp.AccountAge
-    
     local graphicsInfo = ""
-    pcall(function()
-        graphicsInfo = tostring(settings().Rendering.GraphicsMode)
-    end)
-    
+    pcall(function() graphicsInfo = tostring(settings().Rendering.GraphicsMode) end)
     local viewportSize = workspace.CurrentCamera.ViewportSize
     local screenInfo = tostring(viewportSize.X) .. "x" .. tostring(viewportSize.Y)
-    
     local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo
-    
     local hash = ""
     for i = 1, #hwidString do
         hash = hash .. string.format("%02x", string.byte(hwidString, i))
     end
-    
     return hash:sub(1, 32)
 end
 
--- Verify key via pastebin
 local hwid = getHWID()
 print("🖥️ HWID: " .. hwid)
 
--- Get keys from pastebin
-local pastebinURL = "https://pastebin.com/raw/qe5bJ9tM"
-local keyData = game:HttpGet(pastebinURL)
+-- Make request
+local requestFunc = syn and syn.request or request or http_request or (http and http.request)
 
--- Check if key exists and is valid
-local valid = false
-local errorMsg = ""
-
-for line in string.gmatch(keyData, "[^\n]+") do
-    if not line:match("^#") then
-        local parts = {}
-        for part in string.gmatch(line, "[^|]+") do
-            table.insert(parts, part)
-        end
-        
-        if #parts >= 4 then
-            local storedKey = parts[1]
-            local storedHWID = parts[2]
-            local activated = parts[3]
-            local expires = parts[4]
-            
-            if storedKey == script_key then
-                -- Check expiration
-                if expires and tonumber(expires) and os.time() > tonumber(expires) then
-                    valid = false
-                    errorMsg = "Key has expired!"
-                    break
-                end
-                
-                -- Check if key is already used and HWID mismatch
-                if activated == "1" and storedHWID ~= "" and storedHWID ~= hwid then
-                    valid = false
-                    errorMsg = "Key is locked to another HWID!"
-                    break
-                end
-                
-                valid = true
-                break
-            end
-        end
-    end
+if not requestFunc then
+    error("❌ No HTTP function available for your executor!")
 end
 
-if valid then
+local data = http:JSONEncode({
+    key = script_key,
+    hwid = hwid,
+    username = lp.Name
+})
+
+local success, response = pcall(function()
+    return requestFunc({
+        Url = API_URL,
+        Method = "POST",
+        Headers = {["Content-Type"] = "application/json"},
+        Body = data
+    })
+end)
+
+if not success then
+    error("❌ Connection failed: " .. tostring(response))
+end
+
+local result = http:JSONDecode(response.Body)
+
+if result and result.success then
     print("✅ Key verified! Loading script...")
-    local scriptContent = game:HttpGet("https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua")
-    loadstring(scriptContent)()
+    local MAIN_SCRIPT = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
+    loadstring(game:HttpGet(MAIN_SCRIPT))()
 else
-    error("❌ " .. (errorMsg ~= "" and errorMsg or "Invalid license key!"))
+    local msg = result and result.message or "Unknown error"
+    error("❌ " .. msg)
 end
