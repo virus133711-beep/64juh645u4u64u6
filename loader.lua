@@ -1,5 +1,5 @@
 -- ============================================
--- SIMPLE LOADER - FIXED VERSION
+-- DEBUG LOADER - Shows full response
 -- ============================================
 
 local players = game:GetService("Players")
@@ -7,154 +7,122 @@ local http = game:GetService("HttpService")
 local API_URL = "http://176.100.36.119:5001/api/verify"
 local lp = players.LocalPlayer
 
--- ============================================
--- GET THE KEY (MULTIPLE METHODS)
--- ============================================
-local script_key = nil
+-- Get key
+local script_key = ... or _G.script_key or getgenv().script_key or ""
 
--- Method 1: Check if it was passed as an argument
-if ... and ... ~= "" then
-    script_key = ...
-    print("✅ Key found via argument")
+if script_key == "" then
+    error("No license key provided!")
 end
 
--- Method 2: Check global variable
-if not script_key and _G.script_key and _G.script_key ~= "" then
-    script_key = _G.script_key
-    print("✅ Key found via _G.script_key")
-end
+print("🔑 Key: " .. script_key)
 
--- Method 3: Check getgenv
-if not script_key and getgenv and getgenv().script_key and getgenv().script_key ~= "" then
-    script_key = getgenv().script_key
-    print("✅ Key found via getgenv().script_key")
-end
-
--- Method 4: Check shared
-if not script_key and shared and shared.script_key and shared.script_key ~= "" then
-    script_key = shared.script_key
-    print("✅ Key found via shared.script_key")
-end
-
--- If no key found, show error
-if not script_key or script_key == "" then
-    error([[
-    ❌ No license key provided!
-    
-    Please use ONE of these methods:
-    
-    Method 1 (Recommended):
-    loadstring(game:HttpGet("YOUR_LOADER_URL"))("YOUR_KEY_HERE")
-    
-    Method 2:
-    script_key = "YOUR_KEY_HERE"
-    loadstring(game:HttpGet("YOUR_LOADER_URL"))()
-    
-    Method 3:
-    getgenv().script_key = "YOUR_KEY_HERE"
-    loadstring(game:HttpGet("YOUR_LOADER_URL"))()
-    ]])
-end
-
-print("🔑 Key found: " .. script_key)
-
--- ============================================
--- GET HWID
--- ============================================
+-- Get HWID
 local function getHWID()
     local userId = lp.UserId
     local accountAge = lp.AccountAge
-    
     local graphicsInfo = ""
     pcall(function()
         graphicsInfo = tostring(settings().Rendering.GraphicsMode)
     end)
-    
     local viewportSize = workspace.CurrentCamera.ViewportSize
     local screenInfo = tostring(viewportSize.X) .. "x" .. tostring(viewportSize.Y)
-    local executor = identifyexecutor and identifyexecutor() or "Unknown"
-    
-    local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo .. ":" .. executor
-    
+    local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo
     local hash = ""
     for i = 1, #hwidString do
         hash = hash .. string.format("%02x", string.byte(hwidString, i))
     end
-    
     return hash:sub(1, 32)
 end
 
--- ============================================
--- VERIFY KEY
--- ============================================
-local function verifyKey(key)
-    local hwid = getHWID()
-    
-    -- Find working HTTP function
-    local requestFunc = syn and syn.request or request or http_request or (http and http.request)
-    
-    if not requestFunc then
-        -- Try using game:HttpGet as fallback
-        return false, "No HTTP function available. Try a different executor."
-    end
-    
-    local data = {
-        key = key,
-        hwid = hwid,
-        username = lp.Name
-    }
-    
-    local success, response = pcall(function()
-        return requestFunc({
+local hwid = getHWID()
+print("🖥️ HWID: " .. hwid)
+print("👤 User: " .. lp.Name)
+
+-- Try different HTTP methods
+local data = http:JSONEncode({
+    key = script_key,
+    hwid = hwid,
+    username = lp.Name
+})
+
+print("📤 Sending: " .. data)
+
+-- Method 1: Try syn.request
+local success = false
+local response = nil
+
+if syn and syn.request then
+    print("📡 Using syn.request...")
+    success, response = pcall(function()
+        return syn.request({
             Url = API_URL,
             Method = "POST",
-            Headers = {
-                ["Content-Type"] = "application/json"
-            },
-            Body = http:JSONEncode(data)
+            Headers = {["Content-Type"] = "application/json"},
+            Body = data
         })
     end)
-    
-    if not success then
-        return false, "Connection failed: " .. tostring(response)
-    end
-    
-    if response and response.Body then
-        local result = http:JSONDecode(response.Body)
-        if result and result.success then
-            return true, "Verified!"
-        elseif result and result.message then
-            if result.message == "INVALID_KEY" then
-                return false, "Invalid license key!"
-            elseif result.message == "KEY_EXPIRED" then
-                return false, "Key has expired!"
-            elseif result.message == "WRONG_HWID" then
-                return false, "Key locked to another HWID!"
-            else
-                return false, result.message
-            end
-        end
-    end
-    
-    return false, "Verification failed - Server error"
 end
 
--- ============================================
--- MAIN SCRIPT URL
--- ============================================
-local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
+-- Method 2: Try request
+if not success and request then
+    print("📡 Using request...")
+    success, response = pcall(function()
+        return request({
+            Url = API_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = data
+        })
+    end)
+end
 
--- ============================================
--- RUN VERIFICATION
--- ============================================
-print("🔒 Verifying license...")
-local valid, message = verifyKey(script_key)
+-- Method 3: Try http_request
+if not success and http_request then
+    print("📡 Using http_request...")
+    success, response = pcall(function()
+        return http_request({
+            Url = API_URL,
+            Method = "POST",
+            Headers = {["Content-Type"] = "application/json"},
+            Body = data
+        })
+    end)
+end
 
-if valid then
-    print("✅ " .. message)
-    print("📥 Loading script...")
+-- Method 4: Try game:HttpGet (GET method only)
+if not success then
+    print("📡 Trying game:HttpGet fallback...")
+    success, response = pcall(function()
+        local url = API_URL .. "?data=" .. http:URLEncode(data)
+        local body = game:HttpGet(url, true)
+        return {Body = body, StatusCode = 200}
+    end)
+end
+
+if not success then
+    error("❌ All HTTP methods failed: " .. tostring(response))
+end
+
+print("📥 Response Status: " .. tostring(response.StatusCode))
+print("📥 Response Body: " .. tostring(response.Body))
+
+-- Parse response
+local result
+local parseSuccess, parseError = pcall(function()
+    result = http:JSONDecode(response.Body)
+end)
+
+if not parseSuccess then
+    error("❌ Failed to parse JSON: " .. tostring(parseError) .. "\nRaw response: " .. tostring(response.Body))
+end
+
+print("📊 Result: success=" .. tostring(result.success) .. ", message=" .. tostring(result.message))
+
+if result and result.success then
+    print("✅ Key verified! Loading script...")
+    local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
     local scriptContent = game:HttpGet(MAIN_SCRIPT_URL)
     loadstring(scriptContent)()
 else
-    error("❌ " .. message)
+    error("❌ Verification failed: " .. (result and result.message or "Unknown error"))
 end
