@@ -1,5 +1,5 @@
 -- ============================================
--- UNIVERSAL LOADER (Works with most executors)
+-- SIMPLE LOADER - FIXED VERSION
 -- ============================================
 
 local players = game:GetService("Players")
@@ -7,73 +7,103 @@ local http = game:GetService("HttpService")
 local API_URL = "http://176.100.36.119:5001/api/verify"
 local lp = players.LocalPlayer
 
--- Universal HTTP request function
-local function getRequestFunction()
-    -- Try different executor HTTP functions
-    local requestFunc = syn and syn.request 
-        or request 
-        or http_request 
-        or http.request 
-        or (http and http.request)
-        or (getgenv and getgenv().request)
-        or (shared and shared.request)
+-- ============================================
+-- GET THE KEY (MULTIPLE METHODS)
+-- ============================================
+local script_key = nil
 
-    -- For executors that use loadstring with custom functions
-    if not requestFunc then
-        -- Check if we can use game:HttpGet (limited but works sometimes)
-        local success, result = pcall(function()
-            return game:HttpGet(API_URL)
-        end)
-        if success then
-            return function(options)
-                local body = game:HttpGet(options.Url)
-                return {Body = body, StatusCode = 200}
-            end
-        end
-    end
-
-    return requestFunc
+-- Method 1: Check if it was passed as an argument
+if ... and ... ~= "" then
+    script_key = ...
+    print("✅ Key found via argument")
 end
 
--- Get HWID
+-- Method 2: Check global variable
+if not script_key and _G.script_key and _G.script_key ~= "" then
+    script_key = _G.script_key
+    print("✅ Key found via _G.script_key")
+end
+
+-- Method 3: Check getgenv
+if not script_key and getgenv and getgenv().script_key and getgenv().script_key ~= "" then
+    script_key = getgenv().script_key
+    print("✅ Key found via getgenv().script_key")
+end
+
+-- Method 4: Check shared
+if not script_key and shared and shared.script_key and shared.script_key ~= "" then
+    script_key = shared.script_key
+    print("✅ Key found via shared.script_key")
+end
+
+-- If no key found, show error
+if not script_key or script_key == "" then
+    error([[
+    ❌ No license key provided!
+    
+    Please use ONE of these methods:
+    
+    Method 1 (Recommended):
+    loadstring(game:HttpGet("YOUR_LOADER_URL"))("YOUR_KEY_HERE")
+    
+    Method 2:
+    script_key = "YOUR_KEY_HERE"
+    loadstring(game:HttpGet("YOUR_LOADER_URL"))()
+    
+    Method 3:
+    getgenv().script_key = "YOUR_KEY_HERE"
+    loadstring(game:HttpGet("YOUR_LOADER_URL"))()
+    ]])
+end
+
+print("🔑 Key found: " .. script_key)
+
+-- ============================================
+-- GET HWID
+-- ============================================
 local function getHWID()
     local userId = lp.UserId
     local accountAge = lp.AccountAge
-
+    
     local graphicsInfo = ""
     pcall(function()
         graphicsInfo = tostring(settings().Rendering.GraphicsMode)
     end)
-
+    
     local viewportSize = workspace.CurrentCamera.ViewportSize
     local screenInfo = tostring(viewportSize.X) .. "x" .. tostring(viewportSize.Y)
     local executor = identifyexecutor and identifyexecutor() or "Unknown"
-
+    
     local hwidString = tostring(userId) .. ":" .. tostring(accountAge) .. ":" .. graphicsInfo .. ":" .. screenInfo .. ":" .. executor
-
+    
     local hash = ""
     for i = 1, #hwidString do
         hash = hash .. string.format("%02x", string.byte(hwidString, i))
     end
-
+    
     return hash:sub(1, 32)
 end
 
--- Verify key
+-- ============================================
+-- VERIFY KEY
+-- ============================================
 local function verifyKey(key)
     local hwid = getHWID()
-    local requestFunc = getRequestFunction()
-
+    
+    -- Find working HTTP function
+    local requestFunc = syn and syn.request or request or http_request or (http and http.request)
+    
     if not requestFunc then
-        return false, "No HTTP request function found for your executor!"
+        -- Try using game:HttpGet as fallback
+        return false, "No HTTP function available. Try a different executor."
     end
-
+    
     local data = {
         key = key,
         hwid = hwid,
         username = lp.Name
     }
-
+    
     local success, response = pcall(function()
         return requestFunc({
             Url = API_URL,
@@ -84,11 +114,11 @@ local function verifyKey(key)
             Body = http:JSONEncode(data)
         })
     end)
-
+    
     if not success then
-        return false, "Request failed: " .. tostring(response)
+        return false, "Connection failed: " .. tostring(response)
     end
-
+    
     if response and response.Body then
         local result = http:JSONDecode(response.Body)
         if result and result.success then
@@ -105,39 +135,26 @@ local function verifyKey(key)
             end
         end
     end
-
-    return false, "Verification failed!"
+    
+    return false, "Verification failed - Server error"
 end
 
 -- ============================================
--- YOUR MAIN SCRIPT URL
+-- MAIN SCRIPT URL
 -- ============================================
 local MAIN_SCRIPT_URL = "https://raw.githubusercontent.com/virus133711-beep/5647y457y45y7u457y/refs/heads/main/script.lua"
 
 -- ============================================
--- GET KEY FROM ARGUMENT OR GLOBAL VARIABLE
+-- RUN VERIFICATION
 -- ============================================
--- This is the FIX: Check multiple places for the key
-local script_key = ... or _G.script_key or getgenv().script_key or shared.script_key or ""
-
-if script_key == "" then
-    error("No license key provided! Set script_key='YOUR_KEY' before loading")
-end
-
-print("Verifying key: " .. script_key)
+print("🔒 Verifying license...")
 local valid, message = verifyKey(script_key)
 
 if valid then
-    print("Success! Loading script...")
-    local success, result = pcall(function()
-        return game:HttpGet(MAIN_SCRIPT_URL)
-    end)
-
-    if success and result then
-        loadstring(result)()
-    else
-        error("Failed to load main script: " .. tostring(result))
-    end
+    print("✅ " .. message)
+    print("📥 Loading script...")
+    local scriptContent = game:HttpGet(MAIN_SCRIPT_URL)
+    loadstring(scriptContent)()
 else
-    error("License error: " .. message)
+    error("❌ " .. message)
 end
